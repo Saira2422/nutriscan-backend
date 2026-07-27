@@ -85,7 +85,10 @@ exports.forgotPassword = catchAsync(async (req, res) => {
   user.passwordResetOTPExpiry = Date.now() + 10 * 60 * 1000;
   await user.save({ validateBeforeSave: false });
 
-  await sendOTPEmail(email, otp);
+  const emailSent = await sendOTPEmail(email, otp);
+  if (!emailSent) {
+    console.log(`\n===== OTP FOR ${email}: ${otp} =====\n`);
+  }
 
   res.status(200).json({
     success: true,
