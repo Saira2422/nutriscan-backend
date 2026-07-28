@@ -76,7 +76,6 @@ Check ingredients against the user's allergies and flag any matches as dangerous
       ],
       max_tokens: 2048,
       temperature: 0.3,
-      extra_body: { enable_thinking: false },
     });
 
     let content = response.choices[0]?.message?.content;
