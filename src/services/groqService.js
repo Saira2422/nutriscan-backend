@@ -1,8 +1,10 @@
 const Groq = require('groq-sdk');
+const fs = require('fs');
+const path = require('path');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const analyzeFoodImage = async (imageUrl, userContext = {}) => {
+const analyzeFoodImage = async (imageUrl, userContext = {}, filePath = null) => {
   const allergyContext = userContext.allergies?.length
     ? `User allergies: ${userContext.allergies.join(', ')}.`
     : 'No known allergies.';
@@ -51,6 +53,18 @@ Scoring guide:
 
 Check ingredients against the user's allergies and flag any matches as dangerous allergen warnings.`;
 
+  let imageContent;
+  if (filePath && fs.existsSync(filePath)) {
+    const imageBuffer = fs.readFileSync(filePath);
+    const base64Image = imageBuffer.toString('base64');
+    const ext = path.extname(filePath).toLowerCase().replace('.', '') || 'jpeg';
+    const mimeMap = { '.jpg': 'jpeg', '.jpeg': 'jpeg', '.png': 'png', '.gif': 'gif', '.webp': 'webp' };
+    const mime = mimeMap[path.extname(filePath).toLowerCase()] || 'jpeg';
+    imageContent = { type: 'image_url', image_url: { url: `data:image/${mime};base64,${base64Image}` } };
+  } else {
+    imageContent = { type: 'image_url', image_url: { url: imageUrl } };
+  }
+
   try {
     const response = await groq.chat.completions.create({
       model: 'qwen/qwen3.6-27b',
@@ -59,7 +73,7 @@ Check ingredients against the user's allergies and flag any matches as dangerous
           role: 'user',
           content: [
             { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: imageUrl } },
+            imageContent,
           ],
         },
       ],

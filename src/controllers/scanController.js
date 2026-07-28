@@ -18,7 +18,7 @@ exports.analyze = catchAsync(async (req, res) => {
     height: req.user.height,
   };
 
-  const analysis = await analyzeFoodImage(imageUrl, userContext);
+  const analysis = await analyzeFoodImage(imageUrl, userContext, req.file.path);
 
   const scan = await Scan.create({
     userId: req.user._id,
