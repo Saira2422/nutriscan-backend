@@ -1,6 +1,18 @@
 const Groq = require('groq-sdk');
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const apiKeys = [
+  process.env.GROQ_API_KEY,
+  process.env.GROQ_API_KEY_2,
+  process.env.GROQ_API_KEY_3,
+].filter(Boolean);
+
+let currentKeyIndex = 0;
+
+function getNextClient() {
+  const key = apiKeys[currentKeyIndex];
+  currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
+  return new Groq({ apiKey: key });
+}
 
 const analyzeFoodImage = async (imageUrl, userContext = {}, imageBuffer = null, mimeType = 'image/jpeg') => {
   const allergyContext = userContext.allergies?.length
@@ -61,41 +73,52 @@ Check ingredients against the user's allergies and flag any matches as dangerous
     imageContent = { type: 'image_url', image_url: { url: imageUrl } };
   }
 
-  try {
-    console.log('Sending image to Groq (base64 length:', imageContent.image_url?.url?.length || 0, ')');
-    const response = await groq.chat.completions.create({
-      model: 'qwen/qwen3.6-27b',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            imageContent,
-          ],
-        },
-      ],
-      max_tokens: 2048,
-      temperature: 0.3,
-    });
+  let lastError;
+  const attempts = Math.min(apiKeys.length, 3);
 
-    let content = response.choices[0]?.message?.content;
-    if (!content) throw new Error('No response from AI');
+  for (let i = 0; i < attempts; i++) {
+    const groq = getNextClient();
+    const keyNum = ((currentKeyIndex - 1 + apiKeys.length) % apiKeys.length) + 1;
+    try {
+      console.log(`Attempt ${i + 1}/${attempts} with API key #${keyNum}`);
+      const response = await groq.chat.completions.create({
+        model: 'qwen/qwen3.6-27b',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              imageContent,
+            ],
+          },
+        ],
+        max_tokens: 2048,
+        temperature: 0.3,
+      });
 
-    let cleaned = content.trim();
+      let content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('No response from AI');
 
-    // Strip <think>...</think> tags if present
-    cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      let cleaned = content.trim();
+      cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 
-    if (cleaned.startsWith('```')) {
-      cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+
+      console.log(`Success with API key #${keyNum}`);
+      return JSON.parse(cleaned);
+    } catch (error) {
+      console.error(`API key #${keyNum} failed:`, error.message);
+      lastError = error;
+      if (i < attempts - 1) {
+        console.log('Trying next API key...');
+      }
     }
-
-    return JSON.parse(cleaned);
-  } catch (error) {
-    console.error('Groq API error:', error.message);
-    console.error('Groq API error details:', JSON.stringify(error));
-    throw new Error('AI analysis failed. Please try again.');
   }
+
+  console.error('All API keys failed');
+  throw new Error('AI analysis failed. All API keys exhausted. Please try again.');
 };
 
 const generateMotivation = async (userProfile = {}) => {
@@ -106,19 +129,27 @@ const generateMotivation = async (userProfile = {}) => {
   const prompt = `You are a health and nutrition motivator. Generate a short, encouraging daily health tip or motivation message.
 ${context}Keep it concise (2-3 sentences max), positive, and actionable. Do not use JSON, just return plain text.`;
 
-  try {
-    const response = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 200,
-      temperature: 0.7,
-    });
+  let lastError;
+  const attempts = Math.min(apiKeys.length, 3);
 
-    return response.choices[0]?.message?.content || 'Stay healthy, stay happy!';
-  } catch (error) {
-    console.error('Groq motivation error:', error.message);
-    return 'Every healthy choice you make counts. Keep going!';
+  for (let i = 0; i < attempts; i++) {
+    const groq = getNextClient();
+    const keyNum = ((currentKeyIndex - 1 + apiKeys.length) % apiKeys.length) + 1;
+    try {
+      const response = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 200,
+        temperature: 0.7,
+      });
+      return response.choices[0]?.message?.content || 'Stay healthy, stay happy!';
+    } catch (error) {
+      console.error(`Motivation key #${keyNum} failed:`, error.message);
+      lastError = error;
+    }
   }
+
+  return 'Every healthy choice you make counts. Keep going!';
 };
 
 module.exports = { analyzeFoodImage, generateMotivation };
