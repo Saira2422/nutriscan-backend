@@ -53,7 +53,7 @@ Check ingredients against the user's allergies and flag any matches as dangerous
 
   try {
     const response = await groq.chat.completions.create({
-      model: 'llama-3.2-11b-vision-preview',
+      model: 'qwen/qwen3.6-27b',
       messages: [
         {
           role: 'user',
@@ -92,7 +92,7 @@ ${context}Keep it concise (2-3 sentences max), positive, and actionable. Do not 
 
   try {
     const response = await groq.chat.completions.create({
-      model: 'llama-3.2-11b-vision-preview',
+      model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 200,
       temperature: 0.7,
