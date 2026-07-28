@@ -76,12 +76,17 @@ Check ingredients against the user's allergies and flag any matches as dangerous
       ],
       max_tokens: 2048,
       temperature: 0.3,
+      extra_body: { enable_thinking: false },
     });
 
-    const content = response.choices[0]?.message?.content;
+    let content = response.choices[0]?.message?.content;
     if (!content) throw new Error('No response from AI');
 
     let cleaned = content.trim();
+
+    // Strip <think>...</think> tags if present
+    cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
     if (cleaned.startsWith('```')) {
       cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
     }

@@ -9,15 +9,22 @@ exports.analyze = catchAsync(async (req, res) => {
     throw new AppError('Image is required', 400, 'SCAN_001');
   }
 
-  // Upload buffer to Cloudinary
-  const b64 = req.file.buffer.toString('base64');
-  const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-  const uploadResult = await cloudinary.uploader.upload(dataURI, {
-    folder: 'nutriscan',
-    resource_type: 'image',
-    transformation: [{ width: 1024, height: 1024, crop: 'limit' }, { quality: 'auto' }],
-  });
-  const imageUrl = uploadResult.secure_url;
+  console.log('Step 1: Upload to Cloudinary...');
+  let imageUrl;
+  try {
+    const b64 = req.file.buffer.toString('base64');
+    const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+    const uploadResult = await cloudinary.uploader.upload(dataURI, {
+      folder: 'nutriscan',
+      resource_type: 'image',
+      transformation: [{ width: 1024, height: 1024, crop: 'limit' }, { quality: 'auto' }],
+    });
+    imageUrl = uploadResult.secure_url;
+    console.log('Cloudinary upload success:', imageUrl);
+  } catch (cloudErr) {
+    console.error('Cloudinary upload failed:', cloudErr.message);
+    throw new AppError('Image upload failed', 500, 'SCAN_003');
+  }
 
   const userContext = {
     allergies: req.user.allergies || [],
@@ -26,7 +33,9 @@ exports.analyze = catchAsync(async (req, res) => {
     height: req.user.height,
   };
 
+  console.log('Step 2: Send to Groq AI...');
   const analysis = await analyzeFoodImage(imageUrl, userContext, req.file.buffer, req.file.mimetype);
+  console.log('Step 3: Groq analysis complete');
 
   const scan = await Scan.create({
     userId: req.user._id,
