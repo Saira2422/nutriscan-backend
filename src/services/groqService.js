@@ -9,10 +9,13 @@ const apiKeys = [
 let currentKeyIndex = 0;
 
 function getNextClient() {
-  const key = apiKeys[currentKeyIndex];
-  currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
-  return new Groq({ apiKey: key });
+  const key = apiKeys[currentKeyIndex % apiKeys.length];
+  const keyNum = (currentKeyIndex % apiKeys.length) + 1;
+  currentKeyIndex++;
+  return { client: new Groq({ apiKey: key }), keyNum };
 }
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const analyzeFoodImage = async (imageUrl, userContext = {}, imageBuffer = null, mimeType = 'image/jpeg') => {
   const allergyContext = userContext.allergies?.length
@@ -73,14 +76,12 @@ Check ingredients against the user's allergies and flag any matches as dangerous
     imageContent = { type: 'image_url', image_url: { url: imageUrl } };
   }
 
-  let lastError;
-  const attempts = Math.min(apiKeys.length, 3);
+  const totalAttempts = apiKeys.length * 2;
 
-  for (let i = 0; i < attempts; i++) {
-    const groq = getNextClient();
-    const keyNum = ((currentKeyIndex - 1 + apiKeys.length) % apiKeys.length) + 1;
+  for (let i = 0; i < totalAttempts; i++) {
+    const { client: groq, keyNum } = getNextClient();
     try {
-      console.log(`Attempt ${i + 1}/${attempts} with API key #${keyNum}`);
+      console.log(`Attempt ${i + 1}/${totalAttempts} with API key #${keyNum}`);
       const response = await groq.chat.completions.create({
         model: 'qwen/qwen3.6-27b',
         messages: [
@@ -109,16 +110,26 @@ Check ingredients against the user's allergies and flag any matches as dangerous
       console.log(`Success with API key #${keyNum}`);
       return JSON.parse(cleaned);
     } catch (error) {
+      const isRateLimit = error.status === 429 ||
+        error.message?.includes('rate') ||
+        error.message?.includes('limit') ||
+        error.message?.includes('exhausted') ||
+        error.message?.includes('requests');
+
       console.error(`API key #${keyNum} failed:`, error.message);
-      lastError = error;
-      if (i < attempts - 1) {
-        console.log('Trying next API key...');
+
+      if (isRateLimit && i < totalAttempts - 1) {
+        const waitTime = Math.min(2000 * (i + 1), 10000);
+        console.log(`Rate limited. Waiting ${waitTime}ms before retry...`);
+        await sleep(waitTime);
+      } else if (!isRateLimit) {
+        throw error;
       }
     }
   }
 
-  console.error('All API keys failed');
-  throw new Error('AI analysis failed. All API keys exhausted. Please try again.');
+  console.error('All attempts exhausted');
+  throw new Error('AI service is busy. Please try again in a few seconds.');
 };
 
 const generateMotivation = async (userProfile = {}) => {
@@ -129,12 +140,10 @@ const generateMotivation = async (userProfile = {}) => {
   const prompt = `You are a health and nutrition motivator. Generate a short, encouraging daily health tip or motivation message.
 ${context}Keep it concise (2-3 sentences max), positive, and actionable. Do not use JSON, just return plain text.`;
 
-  let lastError;
-  const attempts = Math.min(apiKeys.length, 3);
+  const totalAttempts = apiKeys.length * 2;
 
-  for (let i = 0; i < attempts; i++) {
-    const groq = getNextClient();
-    const keyNum = ((currentKeyIndex - 1 + apiKeys.length) % apiKeys.length) + 1;
+  for (let i = 0; i < totalAttempts; i++) {
+    const { client: groq, keyNum } = getNextClient();
     try {
       const response = await groq.chat.completions.create({
         model: 'llama-3.3-70b-versatile',
@@ -144,8 +153,13 @@ ${context}Keep it concise (2-3 sentences max), positive, and actionable. Do not 
       });
       return response.choices[0]?.message?.content || 'Stay healthy, stay happy!';
     } catch (error) {
+      const isRateLimit = error.status === 429 ||
+        error.message?.includes('rate') ||
+        error.message?.includes('limit');
       console.error(`Motivation key #${keyNum} failed:`, error.message);
-      lastError = error;
+      if (isRateLimit && i < totalAttempts - 1) {
+        await sleep(2000 * (i + 1));
+      }
     }
   }
 
