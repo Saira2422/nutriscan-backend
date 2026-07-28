@@ -100,14 +100,26 @@ Check ingredients against the user's allergies and flag any matches as dangerous
       let content = response.choices[0]?.message?.content;
       if (!content) throw new Error('No response from AI');
 
-      let cleaned = content.trim();
-      cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      console.log('Raw response (first 200 chars):', content.substring(0, 200));
 
-      if (cleaned.startsWith('```')) {
-        cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      let cleaned = content.trim();
+
+      // Strip think tags (all variations)
+      cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      cleaned = cleaned.replace(/<\/?think>/gi, '').trim();
+      cleaned = cleaned.replace(/\n<think>[\s\S]*$/g, '').trim();
+
+      // Strip markdown code fences
+      cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?\s*```\s*$/i, '').trim();
+
+      // Try to extract JSON object from the response
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleaned = jsonMatch[0];
       }
 
-      console.log(`Success with API key #${keyNum}`);
+      console.log('Cleaned response (first 200 chars):', cleaned.substring(0, 200));
+
       return JSON.parse(cleaned);
     } catch (error) {
       const isRateLimit = error.status === 429 ||
