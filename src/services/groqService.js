@@ -1,10 +1,8 @@
 const Groq = require('groq-sdk');
-const fs = require('fs');
-const path = require('path');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const analyzeFoodImage = async (imageUrl, userContext = {}, filePath = null) => {
+const analyzeFoodImage = async (imageUrl, userContext = {}, imageBuffer = null, mimeType = 'image/jpeg') => {
   const allergyContext = userContext.allergies?.length
     ? `User allergies: ${userContext.allergies.join(', ')}.`
     : 'No known allergies.';
@@ -54,18 +52,17 @@ Scoring guide:
 Check ingredients against the user's allergies and flag any matches as dangerous allergen warnings.`;
 
   let imageContent;
-  if (filePath && fs.existsSync(filePath)) {
-    const imageBuffer = fs.readFileSync(filePath);
+  if (imageBuffer) {
     const base64Image = imageBuffer.toString('base64');
-    const ext = path.extname(filePath).toLowerCase().replace('.', '') || 'jpeg';
-    const mimeMap = { '.jpg': 'jpeg', '.jpeg': 'jpeg', '.png': 'png', '.gif': 'gif', '.webp': 'webp' };
-    const mime = mimeMap[path.extname(filePath).toLowerCase()] || 'jpeg';
-    imageContent = { type: 'image_url', image_url: { url: `data:image/${mime};base64,${base64Image}` } };
+    const mime = mimeType || 'image/jpeg';
+    const dataUrl = `data:${mime};base64,${base64Image}`;
+    imageContent = { type: 'image_url', image_url: { url: dataUrl } };
   } else {
     imageContent = { type: 'image_url', image_url: { url: imageUrl } };
   }
 
   try {
+    console.log('Sending image to Groq (base64 length:', imageContent.image_url?.url?.length || 0, ')');
     const response = await groq.chat.completions.create({
       model: 'qwen/qwen3.6-27b',
       messages: [
@@ -92,6 +89,7 @@ Check ingredients against the user's allergies and flag any matches as dangerous
     return JSON.parse(cleaned);
   } catch (error) {
     console.error('Groq API error:', error.message);
+    console.error('Groq API error details:', JSON.stringify(error));
     throw new Error('AI analysis failed. Please try again.');
   }
 };

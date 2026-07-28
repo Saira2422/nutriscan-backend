@@ -4,12 +4,6 @@ const multer = require('multer');
 const scanController = require('../controllers/scanController');
 const { protect } = require('../middleware/auth');
 
-const storage = multer.diskStorage({
-  filename: (req, file, cb) => {
-    cb(null, `scan-${Date.now()}-${Math.round(Math.random() * 1e9)}${require('path').extname(file.originalname)}`);
-  },
-});
-
 const fileFilter = (req, file, cb) => {
   const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
   const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif'];
@@ -23,7 +17,7 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 },
 });

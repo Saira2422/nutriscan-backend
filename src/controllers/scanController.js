@@ -1,7 +1,7 @@
 const Scan = require('../models/Scan');
 const AppError = require('../utils/AppError');
 const catchAsync = require('../utils/catchAsync');
-const { uploadImage } = require('../services/cloudinaryService');
+const cloudinary = require('../config/cloudinary');
 const { analyzeFoodImage } = require('../services/groqService');
 
 exports.analyze = catchAsync(async (req, res) => {
@@ -9,7 +9,15 @@ exports.analyze = catchAsync(async (req, res) => {
     throw new AppError('Image is required', 400, 'SCAN_001');
   }
 
-  const imageUrl = await uploadImage(req.file.path);
+  // Upload buffer to Cloudinary
+  const b64 = req.file.buffer.toString('base64');
+  const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+  const uploadResult = await cloudinary.uploader.upload(dataURI, {
+    folder: 'nutriscan',
+    resource_type: 'image',
+    transformation: [{ width: 1024, height: 1024, crop: 'limit' }, { quality: 'auto' }],
+  });
+  const imageUrl = uploadResult.secure_url;
 
   const userContext = {
     allergies: req.user.allergies || [],
@@ -18,7 +26,7 @@ exports.analyze = catchAsync(async (req, res) => {
     height: req.user.height,
   };
 
-  const analysis = await analyzeFoodImage(imageUrl, userContext, req.file.path);
+  const analysis = await analyzeFoodImage(imageUrl, userContext, req.file.buffer, req.file.mimetype);
 
   const scan = await Scan.create({
     userId: req.user._id,
